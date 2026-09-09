@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lager- & EAN-Verwaltung</title>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 20px;
+        }
+        h2 { color: #333; }
+        .container { max-width: 500px; margin: 0 auto; }
+        .section-box {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        .btn-container { margin: 15px 0; text-align: center; }
+        button {
+            padding: 10px 20px;
+            font-size: 1rem;
+            font-weight: bold;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        #start-btn { background-color: #28a745; }
+        #stop-btn { background-color: #dc3545; display: none; }
+        #no-ean-btn { background-color: #17a2b8; width: 100%; margin-top: 10px; }
+        #reader { width: 100%; border-radius: 8px; overflow: hidden; }
+        .search-group input {
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+        .search-results {
+            margin-top: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .search-item {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+        }
+        .search-item:hover { background-color: #f1f1f1; }
+        #result-container, #form-container {
+            margin-top: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            text-align: left;
+            display: none;
+        }
+        #form-container { background: #fff3cd; border: 1px solid #ffeeba; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-weight: bold; margin-bottom: 5px; }
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        #save-btn { background-color: #007bff; width: 100%; }
+        .edit-btn { background-color: #ffc107; color: black; }
+        .delete-btn { background-color: #dc3545; }
+        .warning { color: #856404; font-weight: bold; }
+        #loading { font-weight: bold; color: #007bff; margin: 10px 0; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Lager- & EAN-Verwaltung</h2>
+        <div id="loading">Verbinde mit Cloud...</div>
+
+        <!-- SUCHEN -->
+        <div class="section-box">
+            <h3>Artikel suchen</h3>
+            <div class="search-group">
+                <input type="text" id="search-input" oninput="filterArticles()" placeholder="Name, Art.Nr, Platz oder Code...">
+            </div>
+            <div id="search-results" class="search-results"></div>
+        </div>
+
+        <!-- SCANNEN -->
+        <div class="section-box">
+            <h3>Barcode scannen</h3>
+            <div class="btn-container">
+                <button id="start-btn" onclick="startScanner()">Kamera öffnen</button>
+                <button id="stop-btn" onclick="stopScanner()">Kamera schließen</button>
+            </div>
+            <div id="reader"></div>
+            <button id="no-ean-btn" onclick="openNoEanForm()">Produkt ohne EAN anlegen</button>
+        </div>
+
+        <!-- DETAILS -->
+        <div id="result-container">
+            <h3>Artikeldetails:</h3>
+            <p><strong>Code / ID:</strong> <span id="res-code"></span></p>
+            <p><strong>Artikelnummer:</strong> <span id="res-artikelnummer"></span></p>
+            <p><strong>Name:</strong> <span id="res-name"></span></p>
+            <p><strong>Lagerplatz:</strong> <span id="res-place"></span></p>
+            <p><strong>Menge:</strong> <span id="res-qty"></span></p>
+            <p><strong>Pfandwert:</strong> <span id="res-deposit"></span> €</p>
+            
+            <div style="margin-top: 15px; text-align: center;">
+                <button class="edit-btn" onclick="editCurrentItem()">Bearbeiten</button>
+            </div>
+        </div>
+
+        <!-- FORMULAR -->
+        <div id="form-container">
+            <h3 id="form-title" class="warning">Artikel anlegen</h3>
+            <p><strong>Code / ID:</strong> <span id="new-code-display"></span></p>
+            
+            <form id="article-form" onsubmit="saveArticle(event)">
+                <input type="hidden" id="input-code">
+                
+                <div class="form-group">
+                    <label for="input-artikelnummer">Artikelnummer:</label>
+                    <input type="text" id="input-artikelnummer" placeholder="z.B. ART-10045">
+                </div>
+                <div class="form-group">
+                    <label for="input-name">Artikelname:</label>
+                    <input type="text" id="input-name" required placeholder="z.B. Club Mate Kiste">
+                </div>
+                <div class="form-group">
+                    <label for="input-place">Lagerstellplatz:</label>
+                    <input type="text" id="input-place" required placeholder="z.B. Regal A3">
+                </div>
+                <div class="form-group">
+                    <label for="input-qty">Gesamtmenge:</label>
+                    <input type="number" id="input-qty" required placeholder="z.B. 20">
+                </div>
+                <div class="form-group">
+                    <label for="input-deposit">Pfandwert (in €):</label>
+                    <input type="number" step="0.01" id="input-deposit" required placeholder="z.B. 3.30">
+                </div>
+                
+                <button type="submit" id="save-btn">Speichern</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // HIER DEINE GOOGLE APPS SCRIPT URL EINFÜGEN:
+        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyddzN5iKKcGfmN8s0Z2XRBDq2YxKqkaxKgkKz1CT6DB9ErBxGTZukQVHEpKfcUo6N_tg/exec";
+
+        let html5QrCode = null;
+        let scannedRecently = false;
+        let activeCode = null;
+        let cachedInventory = {};
+
+        window.onload = function() {
+            loadInventory();
+        };
+
+        function loadInventory() {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('loading').innerText = "Lade Daten aus der Cloud...";
+
+            fetch(WEB_APP_URL + "?t=" + new Date().getTime())
+                .then(res => res.text())
+                .then(text => {
+                    let data = JSON.parse(text);
+                    cachedInventory = {};
+                    data.forEach(item => {
+                        cachedInventory[item.code] = item;
+                    });
+                    document.getElementById('loading').style.display = 'none';
+                    console.log("Geladene Artikel:", Object.keys(cachedInventory).length);
+                })
+                .catch(err => {
+                    console.error("Fehler:", err);
+                    document.getElementById('loading').innerText = "Fehler beim Laden der Cloud-Daten!";
+                });
+        }
+
+        function onScanSuccess(decodedText, decodedResult) {
+            if (scannedRecently) return;
+            scannedRecently = true;
+            stopScanner();
+            checkAndDisplayArticle(decodedText);
+        }
+
+        function checkAndDisplayArticle(code) {
+            activeCode = code;
+            if (cachedInventory[code]) {
+                let item = cachedInventory[code];
+                document.getElementById('res-code').innerText = code;
+                document.getElementById('res-artikelnummer').innerText = item.artikelnummer || '-';
+                document.getElementById('res-name').innerText = item.name;
+                document.getElementById('res-place').innerText = item.place;
+                document.getElementById('res-qty').innerText = item.qty;
+                document.getElementById('res-deposit').innerText = item.deposit;
+
+                document.getElementById('result-container').style.display = 'block';
+                document.getElementById('form-container').style.display = 'none';
+            } else {
+                showForm(code, "Unbekannter Code! Bitte anlegen:");
+            }
+        }
+
+        function openNoEanForm() {
+            stopScanner();
+            let uniqueId = 'NO-EAN-' + Date.now();
+            showForm(uniqueId, "Produkt ohne EAN anlegen:");
+        }
+
+        function showForm(code, titleText) {
+            document.getElementById('form-title').innerText = titleText;
+            document.getElementById('new-code-display').innerText = code;
+            document.getElementById('input-code').value = code;
+            
+            if (cachedInventory[code]) {
+                document.getElementById('input-artikelnummer').value = cachedInventory[code].artikelnummer || '';
+                document.getElementById('input-name').value = cachedInventory[code].name || '';
+                document.getElementById('input-place').value = cachedInventory[code].place || '';
+                document.getElementById('input-qty').value = cachedInventory[code].qty || '';
+                document.getElementById('input-deposit').value = cachedInventory[code].deposit || '';
+            } else {
+                document.getElementById('input-artikelnummer').value = '';
+                document.getElementById('input-name').value = '';
+                document.getElementById('input-place').value = '';
+                document.getElementById('input-qty').value = '';
+                document.getElementById('input-deposit').value = '';
+            }
+
+            document.getElementById('form-container').style.display = 'block';
+            document.getElementById('result-container').style.display = 'none';
+        }
+
+        function saveArticle(event) {
+            event.preventDefault();
+            let code = document.getElementById('input-code').value;
+            let newItem = {
+                code: code,
+                artikelnummer: document.getElementById('input-artikelnummer').value,
+                name: document.getElementById('input-name').value,
+                place: document.getElementById('input-place').value,
+                qty: document.getElementById('input-qty').value,
+                deposit: document.getElementById('input-deposit').value
+            };
+
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('loading').innerText = "Speichere in Cloud...";
+
+            fetch(WEB_APP_URL, {
+                method: 'POST',
+                body: JSON.stringify(newItem)
+            })
+            .then(res => res.json())
+            .then(response => {
+                document.getElementById('loading').style.display = 'none';
+                alert('Erfolgreich gespeichert!');
+                loadInventory(); // Neu einlesen
+                checkAndDisplayArticle(code);
+            })
+            .catch(err => {
+                console.error("Speicherfehler:", err);
+                alert("Fehler beim Speichern!");
+                document.getElementById('loading').style.display = 'none';
+            });
+
+            document.getElementById('form-container').style.display = 'none';
+            scannedRecently = false;
+        }
+
+        function editCurrentItem() {
+            if (!activeCode) return;
+            showForm(activeCode, "Artikel bearbeiten:");
+        }
+
+        function filterArticles() {
+            let query = document.getElementById('search-input').value.toLowerCase();
+            let resultsContainer = document.getElementById('search-results');
+            resultsContainer.innerHTML = '';
+
+            if (query.trim() === '') return;
+
+            let matchCount = 0;
+            for (let code in cachedInventory) {
+                let item = cachedInventory[code];
+                if (
+                    (item.name && item.name.toLowerCase().includes(query)) ||
+                    (item.artikelnummer && item.artikelnummer.toLowerCase().includes(query)) ||
+                    (item.place && item.place.toLowerCase().includes(query)) ||
+                    code.toLowerCase().includes(query)
+                ) {
+                    matchCount++;
+                    let div = document.createElement('div');
+                    div.className = 'search-item';
+                    div.innerHTML = `<strong>${item.name}</strong> (Art.Nr: ${item.artikelnummer || '-'}, Platz: ${item.place})`;
+                    div.onclick = function() {
+                        checkAndDispatchSearch(code);
+                        resultsContainer.innerHTML = '';
+                        document.getElementById('search-input').value = '';
+                    };
+                    resultsContainer.appendChild(div);
+                }
+            }
+
+            if (matchCount === 0) {
+                resultsContainer.innerHTML = '<div style="padding: 8px; color: #777;">Keine Treffer.</div>';
+            }
+        }
+
+        function checkAndDispatchSearch(code) {
+            checkAndDisplayArticle(code);
+        }
+
+        function startScanner() {
+            if (html5QrCode) return;
+            document.getElementById('result-container').style.display = 'none';
+            document.getElementById('form-container').style.display = 'none';
+
+            html5QrCode = new Html5Qrcode("reader");
+            const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                config, 
+                onScanSuccess
+            ).then(() => {
+                document.getElementById('start-btn').style.display = 'none';
+                document.getElementById('stop-btn').style.display = 'inline-block';
+                scannedRecently = false;
+            }).catch(err => {
+                alert("Kamera-Fehler: Zugriff verweigert?");
+                html5QrCode = null;
+            });
+        }
+
+        function stopScanner() {
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => {
+                    html5QrCode.clear();
+                    html5QrCode = null;
+                    document.getElementById('start-btn').style.display = 'inline-block';
+                    document.getElementById('stop-btn').style.display = 'none';
+                });
+            }
+        }
+    </script>
+</body>
+</html>
