@@ -171,39 +171,33 @@
             loadInventory();
         };
 
-                function loadInventory() {
+                        function loadInventory() {
             document.getElementById('loading').style.display = 'block';
             document.getElementById('loading').innerText = "Lade Daten aus der Cloud...";
 
-            // Altes JSONP-Script entfernen falls vorhanden
-            let oldScript = document.getElementById('jsonp-load');
-            if (oldScript) oldScript.remove();
-
-            // JSONP-Anfrage erstellen (umgeht CORS zu 100%)
-            let script = document.createElement('script');
-            script.id = 'jsonp-load';
-            script.src = WEB_APP_URL + "?callback=handleInventoryData&t=" + new Date().getTime();
-            
-            script.onerror = function() {
+            // Wir fügen einen Cache-Buster an
+            fetch(WEB_APP_URL + "?t=" + new Date().getTime(), {
+                redirect: "follow"
+            })
+            .then(res => res.text())
+            .then(text => {
+                try {
+                    let data = JSON.parse(text);
+                    cachedInventory = {};
+                    data.forEach(item => {
+                        cachedInventory[item.code] = item;
+                    });
+                    document.getElementById('loading').style.display = 'none';
+                    console.log("Erfolgreich geladene Artikel:", Object.keys(cachedInventory).length);
+                } catch(e) {
+                    console.error("Antwort war kein JSON:", text);
+                    throw new Error("Ungültiges Format von Google");
+                }
+            })
+            .catch(err => {
+                console.error("Fehler:", err);
                 document.getElementById('loading').innerText = "Fehler beim Laden der Cloud-Daten!";
-            };
-
-            document.body.appendChild(script);
-        }
-
-        // Diese Funktion wird von Google aufgerufen, sobald die Daten da sind
-        function handleInventoryData(data) {
-            cachedInventory = {};
-            data.forEach(item => {
-                cachedInventory[item.code] = item;
             });
-            document.getElementById('loading').style.display = 'none';
-            console.log("Erfolgreich geladene Artikel:", Object.keys(cachedInventory).length);
-        }
-                .catch(err => {
-                    console.error("Fehler:", err);
-                    document.getElementById('loading').innerText = "Fehler beim Laden der Cloud-Daten!";
-                });
         }
 
         function onScanSuccess(decodedText, decodedResult) {
