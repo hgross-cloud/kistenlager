@@ -171,32 +171,52 @@
             loadInventory();
         };
 
-                        function loadInventory() {
-            document.getElementById('loading').style.display = 'block';
-            document.getElementById('loading').innerText = "Lade Daten aus der Cloud...";
+                                function loadInventory() {
+            // 1. SCHRITT: Sofort die lokal gespeicherten Daten laden (Turbo-Start)
+            let cachedData = localStorage.getItem('kisten_inventory_cache');
+            if (cachedData) {
+                try {
+                    let data = JSON.parse(cachedData);
+                    cachedInventory = {};
+                    data.forEach(item => {
+                        cachedInventory[item.code] = item;
+                    });
+                    console.log("Daten aus lokalem Cache geladen:", Object.keys(cachedInventory).length);
+                    document.getElementById('loading').style.display = 'none';
+                } catch(e) {
+                    console.error("Fehler beim Lesen des Caches");
+                }
+            } else {
+                document.getElementById('loading').style.display = 'block';
+                document.getElementById('loading').innerText = "Lade Daten aus der Cloud...";
+            }
 
-            // Wir fügen einen Cache-Buster an
+            // 2. SCHRITT: Im Hintergrund frische Daten von Google holen
             fetch(WEB_APP_URL + "?t=" + new Date().getTime(), {
                 redirect: "follow"
             })
             .then(res => res.text())
             .then(text => {
-                try {
-                    let data = JSON.parse(text);
-                    cachedInventory = {};
-                    data.forEach(item => {
-                        cachedInventory[item.code] = item;
-                    });
-                    document.getElementById('loading').style.display = 'none';
-                    console.log("Erfolgreich geladene Artikel:", Object.keys(cachedInventory).length);
-                } catch(e) {
-                    console.error("Antwort war kein JSON:", text);
-                    throw new Error("Ungültiges Format von Google");
-                }
+                let data = JSON.parse(text);
+                cachedInventory = {};
+                data.forEach(item => {
+                    cachedInventory[item.code] = item;
+                });
+                
+                // Im lokalen Speicher für den nächsten Start ablegen
+                localStorage.getItem('kisten_inventory_cache', text);
+                
+                document.getElementById('loading').style.display = 'none';
+                console.log("Frische Cloud-Daten geladen:", Object.keys(cachedInventory).length);
             })
             .catch(err => {
-                console.error("Fehler:", err);
-                document.getElementById('loading').innerText = "Fehler beim Laden der Cloud-Daten!";
+                console.error("Hintergrund-Laden fehlgeschlagen, arbeite mit Cache:", err);
+                // Wenn kein Netz da ist, bleibt der Ladehinweis weg, wenn Cache da war
+                if (!cachedData) {
+                    document.getElementById('loading').innerText = "Fehler beim Laden der Cloud-Daten!";
+                } else {
+                    document.getElementById('loading').style.display = 'none';
+                }
             });
         }
 
